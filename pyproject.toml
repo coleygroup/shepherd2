@@ -1,0 +1,180 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shepherd"
+version = "2.0"
+description = "ShEPhERD-2: Diffusing Shape, Electrostatics, and Pharmacophores for Drug Design"
+authors = [
+    {name = "Kento Abeywardane", email = "kento@mit.edu"},
+    {name = "Kenji Walker", email = "kewalker@mit.edu"}
+]
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "pytorch-lightning",
+    "rdkit",
+    "e3nn",
+    "open3d>=0.18",
+    "numpy",
+    "matplotlib",
+    "tqdm",
+    "huggingface-hub",
+    "omegaconf",
+    "h5py",
+    "meeko",
+    "shepherd-score>=1.4",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/coleygroup/shepherd2"
+"Bug Tracker" = "https://github.com/coleygroup/shepherd2/issues"
+
+[project.optional-dependencies]
+cpu = ["torch==2.6.0", "torch-geometric==2.7.0", "torch-scatter", "torch-cluster"]
+cu118 = ["torch==2.6.0+cu118", "torch-geometric==2.7.0", "torch-scatter", "torch-cluster"]
+cu124 = ["torch==2.6.0+cu124", "torch-geometric==2.7.0", "torch-scatter", "torch-cluster"]
+cu126 = ["torch==2.6.0+cu126", "torch-geometric==2.7.0", "torch-scatter", "torch-cluster"]
+cu128 = ["torch==2.9.1+cu128", "torch-geometric==2.8.0.post1", "torch-scatter", "torch-cluster"]
+cu130 = ["torch==2.9.1+cu130", "torch-geometric==2.8.0.post1", "torch-scatter", "torch-cluster"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff",
+    "mypy>=1.0.0",
+]
+
+[tool.uv]
+conflicts = [[
+    { extra = "cpu" },
+    { extra = "cu118" },
+    { extra = "cu124" },
+    { extra = "cu126" },
+    { extra = "cu128" },
+    { extra = "cu130" },
+]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu118", extra = "cu118" },
+    { index = "pytorch-cu124", extra = "cu124" },
+    # uv can read dependency information from the ARM wheel while resolving
+    # for x86_64, causing CUDA runtime packages to be omitted from uv.lock.
+    # Pinning the Python 3.11 x86_64 wheels avoids that uv bug. ARM architecture users must download manually.
+    { url = "https://download.pytorch.org/whl/cu126/torch-2.6.0%2Bcu126-cp311-cp311-manylinux_2_28_x86_64.whl", extra = "cu126" },
+    { url = "https://download.pytorch.org/whl/cu128/torch-2.9.1%2Bcu128-cp311-cp311-manylinux_2_28_x86_64.whl", extra = "cu128" },
+    { url = "https://download.pytorch.org/whl/cu130/torch-2.9.1%2Bcu130-cp311-cp311-manylinux_2_28_x86_64.whl", extra = "cu130" },
+]
+torch-scatter = [
+    { index = "pyg-cpu", extra = "cpu" },
+    { index = "pyg-cu118", extra = "cu118" },
+    { index = "pyg-cu124", extra = "cu124" },
+    { index = "pyg-cu126", extra = "cu126" },
+    { index = "pyg-cu128", extra = "cu128" },
+    { index = "pyg-cu130", extra = "cu130" },
+]
+torch-cluster = [
+    { index = "pyg-cpu", extra = "cpu" },
+    { index = "pyg-cu118", extra = "cu118" },
+    { index = "pyg-cu124", extra = "cu124" },
+    { index = "pyg-cu126", extra = "cu126" },
+    { index = "pyg-cu128", extra = "cu128" },
+    { index = "pyg-cu130", extra = "cu130" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cpu"
+url = "https://data.pyg.org/whl/torch-2.6.0+cpu.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cu118"
+url = "https://data.pyg.org/whl/torch-2.6.0+cu118.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cu124"
+url = "https://data.pyg.org/whl/torch-2.6.0+cu124.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cu126"
+url = "https://data.pyg.org/whl/torch-2.6.0+cu126.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cu128"
+url = "https://data.pyg.org/whl/torch-2.9.1+cu128.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cu130"
+url = "https://data.pyg.org/whl/torch-2.9.1+cu130.html"
+format = "flat"
+explicit = true
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+shepherd = ["**/*.pt"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.so", "*.dylib", "*.dll"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "--cov=shepherd"
+markers = [
+    "integration: tests that invoke external programs or load model checkpoints",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+]
+ignore = [
+    "E501",   # line too long
+    "B008",   # function call in default argument
+    "SIM108", # ternary operator
+    "F401",   # unused imports
+]

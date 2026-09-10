@@ -1,0 +1,1 @@
+>*NOTE*: The generation script is a reimplementation of [examples/experiments/run_molgenbench_generate.py](examples/experiments/run_molgenbench_generate.py) that wraps [generate](../../../generate.py) simply for demonstration purposes.

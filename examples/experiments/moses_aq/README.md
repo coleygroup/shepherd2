@@ -1,0 +1,1 @@
+>*NOTE*: The generation script is a reimplementation of [examples/experiments/run_moses_benchmark.py](examples/experiments/run_moses_benchmark.py) that wraps [generate](../../../generate.py) simply for demonstration purposes.

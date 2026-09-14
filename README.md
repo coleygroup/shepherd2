@@ -1,6 +1,6 @@
 # *ShEPhERD-2*
 
-This repository contains the code for *ShEPhERD-2*, a 3D molecular generative model that operates on an interaction profile composed of shape, electrostatics, and pharmacophores.
+This repository contains the code for [*ShEPhERD-2*](https://doi.org/10.64898/2026.09.10.750648), a 3D molecular generative model that operates on an interaction profile composed of shape, electrostatics, and pharmacophores.
 
 *ShEPhERD-2* samples diverse molecular structures conditioned on specified interaction profiles, and introduces precise control through pharmacophore prioritization, substructure constraints, and composition of multiple interaction profiles. These features enable bioisosteric fragment merging, dual-target design, selectivity engineering, and modality hopping.
 
@@ -94,7 +94,7 @@ profile = samples[0].to_interaction_profile()
 ## Training and inference data
 `data/conformers/` contains the relevant 3D structures, scaffold indices, and pharmacophore prioritization masks used for model evaluation and case studies. Generally, 3D molecular structures are stored as pickle files containing a list of tuples of (molblock, partial charges).
 
-The training data formatted as `.h5` files can be accessed on Zenodo.
+The training data formatted as `.h5` files can be accessed on [Zenodo](https://doi.org/10.5281/zenodo.22675705).
 
 ## Training
 
@@ -168,8 +168,18 @@ This project is licensed under the MIT License
 If you use or adapt *ShEPhERD-2* or [shepherd-score](https://github.com/coleygroup/shepherd-score) in your work, please cite us:
 
 ```bibtex
-@inproceedings{
-adams2025shepherd,
+@article{Abeywardane2026shepherd2,
+  title = {Interaction Profiles as a Universal Language for Generative Molecular Design with {{ShEPhERD-2}}},
+  author = {Abeywardane, Kento A and Walker, Kenji and Coley, Connor W},
+  year = 2026,
+  journal = {bioRxiv : the preprint server for biology},
+  eprint = {https://www.biorxiv.org/content/early/2026/09/12/2026.09.10.750648.full.pdf},
+  publisher = {Cold Spring Harbor Laboratory},
+  doi = {10.64898/2026.09.10.750648},
+  elocation-id = {2026.09.10.750648}
+}
+
+@inproceedings{adams2025shepherd,
 title={Sh{EP}h{ERD}: Diffusing shape, electrostatics, and pharmacophores for bioisosteric drug design},
 author={Keir Adams and Kento Abeywardane and Jenna Fromer and Connor W. Coley},
 booktitle={The Thirteenth International Conference on Learning Representations},

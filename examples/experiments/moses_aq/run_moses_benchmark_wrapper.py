@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Generate and evaluate the 100-reference MOSES conditional benchmark.
 
-    python examples/experiments/moses_aq/run_moses_conditional_evals_via_generate.py \
+    python examples/experiments/moses_aq/run_moses_benchmark_wrapper.py \
         --mode pharm-priority --output-dir out/moses_pharm_priority
 """
 

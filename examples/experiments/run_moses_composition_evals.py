@@ -12,7 +12,6 @@ import sys
 import tempfile
 import traceback
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -43,24 +42,6 @@ DEFAULT_NUM_SURF_POINTS = 75
 DEFAULT_PROBE_RADIUS = 0.6
 
 
-def read_pickle(path: Path) -> Any:
-    with path.open("rb") as handle:
-        return pickle.load(handle)
-
-
-def write_pickle(path: Path, value: Any) -> None:
-    # Replace completed files atomically so a preempted job never leaves a
-    # half-written checkpoint that a resume would trust
-    temporary_path = path.with_suffix(path.suffix + ".tmp")
-    with temporary_path.open("wb") as handle:
-        pickle.dump(value, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    temporary_path.replace(path)
-
-
-def write_json(path: Path, value: Any) -> None:
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
-
-
 def select_pair(
     molblocks_and_charges: list,
     sample_id: int,
@@ -70,7 +51,7 @@ def select_pair(
 ) -> tuple[list, int, int]:
     """Resolve one sample id to a (mol_data, i, j) condition pair.
 
-    Three input layouts are supported, matching the ShEPhERD-1x script:
+    Three input layouts are supported:
     a pre-paired file of ((molblock, charges), (molblock, charges)) tuples, a
     flat molblock/charges list plus a file of (i, j) index pairs, or a flat
     list from which index pairs are drawn at random.
@@ -111,32 +92,62 @@ def resolve_atom_counts(
     else:
         n_atoms = max(n_atoms_1, n_atoms_2)
 
-    # Upper bound is exclusive, matching 1x: --atom_range -5 5 spans N-5..N+4
+    # Upper bound is exclusive, matching 1x: --atom-range -5 5 spans N-5..N+4
     return list(range(n_atoms + atom_range[0], n_atoms + atom_range[1])) * 2
 
 
-def calculate_summary_statistics(combined_df: pd.DataFrame) -> dict:
-    """Summary statistics."""
-    total_samples = int(len(combined_df))
-    valid_post = (
-        int((~combined_df["molblocks_post_opt"].isna()).sum()) if total_samples else 0
-    )
-    validity_post_rate = float(valid_post / total_samples) if total_samples > 0 else 0.0
+def _json_median(values) -> float:
+    return float(np.nanmedian(values))
 
-    non_nan_df = combined_df[combined_df.notna()]
+
+def _summary_block(combined_df: pd.DataFrame) -> dict:
+    """Medians for one set of shepherd-score rowwise results."""
+    total_samples = int(len(combined_df))
+    if total_samples == 0 or "molblocks_post_opt" not in combined_df.columns:
+        return {
+            "total_samples": 0,
+            "validity_rate": 0.0,
+            "graph_similarity": float("nan"),
+            "surface_similarity": float("nan"),
+            "esp_similarity": float("nan"),
+            "pharm_similarity": float("nan"),
+            "strain_energy": float("nan"),
+            "SA_score": float("nan"),
+            "QED": float("nan"),
+        }
+
+    valid_post = int((~combined_df["molblocks_post_opt"].isna()).sum())
+    validity_post_rate = float(valid_post / total_samples)
+
+    non_nan_df = combined_df.dropna(subset=["molblocks_post_opt"])
     filtered_df = non_nan_df[(non_nan_df["graph_similarities_post_opt"] <= 0.3)]
 
     return {
         "total_samples": total_samples,
         "validity_rate": validity_post_rate,
-        "graph_similarity": np.nanmedian(combined_df["graph_similarities_post_opt"]),
-        "surface_similarity": np.nanmedian(filtered_df["sims_surf_target_relax_optimal"]),
-        "esp_similarity": np.nanmedian(filtered_df["sims_esp_target_relax_optimal"]),
-        "pharm_similarity": np.nanmedian(filtered_df["sims_pharm_target_relax_optimal"]),
-        "strain_energy": np.nanmedian(combined_df["strain_energies"]),
-        "SA_score": np.nanmedian(combined_df["SA_scores_post_opt"]),
-        "QED": np.nanmedian(combined_df["QEDs_post_opt"]),
+        "graph_similarity": _json_median(combined_df["graph_similarities_post_opt"]),
+        "surface_similarity": _json_median(filtered_df["sims_surf_target_relax_optimal"]),
+        "esp_similarity": _json_median(filtered_df["sims_esp_target_relax_optimal"]),
+        "pharm_similarity": _json_median(filtered_df["sims_pharm_target_relax_optimal"]),
+        "strain_energy": _json_median(combined_df["strain_energies"]),
+        "SA_score": _json_median(combined_df["SA_scores_post_opt"]),
+        "QED": _json_median(combined_df["QEDs_post_opt"]),
     }
+
+
+def calculate_summary_statistics(combined_df: pd.DataFrame) -> dict:
+    """Separate summaries for each composition parent (no pooling or averaging)."""
+    stats: dict = {"total_eval_rows": int(len(combined_df))}
+    for condition_index in (0, 1):
+        if (
+            combined_df.empty
+            or "condition_index" not in combined_df.columns
+        ):
+            subset = pd.DataFrame()
+        else:
+            subset = combined_df[combined_df["condition_index"] == condition_index]
+        stats[f"condition_{condition_index}"] = _summary_block(subset)
+    return stats
 
 
 def evaluate_single_condition(work_item):
@@ -156,137 +167,124 @@ def evaluate_single_condition(work_item):
         df_rowwise = df_rowwise.assign(**metadata)
         global_results = series_global.to_dict()
         global_results.update(metadata)
-        write_pickle(rowwise_path, df_rowwise)
-        write_pickle(global_path, global_results)
+        with rowwise_path.open("wb") as handle:
+            pickle.dump(df_rowwise, handle)
+        with global_path.open("wb") as handle:
+            pickle.dump(global_results, handle)
         return key, len(df_rowwise), None
     except Exception as error:
         return key, None, f"{type(error).__name__}: {error}\n{traceback.format_exc()}"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser = argparse.ArgumentParser(description=__doc__)
 
-    # Model
-    parser.add_argument("--model_path", default=None,
-        help="ShEPhERD-2 checkpoint (.ckpt); omit to use the packaged default",
-    )
-    parser.add_argument("--ema_path", default=None,
-        help="Optional EMA checkpoint (.ckpt)",
-    )
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"),
         default="cuda" if torch.cuda.is_available() else "cpu",
     )
 
-    # Conditions
-    parser.add_argument("--path", type=Path, default=TEST_PATH,
+    # Indexing and condition pairs
+    parser.add_argument(
+        "--test-path",
+        type=Path,
+        default=TEST_PATH,
         help="Pickle of ((molblock, charges), (molblock, charges)) pairs, or a "
-             "flat (molblock, charges) list to pair up",
+        "flat (molblock, charges) list to pair up",
     )
-    parser.add_argument("--given_pairs_path", type=Path, default=None,
-        help="Pickle of (i, j) index pairs into a flat --path list; ignored when "
-             "--path is already paired",
+    parser.add_argument("--given-pairs-path", type=Path, default=None,
+        help="Pickle of (i, j) index pairs into a flat --test-path list; ignored "
+        "when --test-path is already paired",
     )
-    parser.add_argument("--save_dir", type=Path, required=True,
-        help="Output directory for checkpoints, per-sample results, and summaries",
-    )
-    parser.add_argument("--sample_id", type=int, default=None,
+    parser.add_argument("--sample-id", type=int, default=None,
         help="Run this one sample id, for SLURM array jobs",
     )
     parser.add_argument("--indices", type=int, nargs="+", default=None,
-        help="Run these sample ids; defaults to all --n_samples ids",
+        help="Run these sample ids; defaults to all --n-samples ids",
     )
-    parser.add_argument("--n_samples", type=int, default=100,
+    parser.add_argument("--n-samples", type=int, default=100,
         help="Size of the sample-id space, i.e. how many pairs are drawn",
     )
     parser.add_argument("--seed", type=int, default=42,
         help="Seed for drawing condition pairs",
     )
-    parser.add_argument("--align_condition", default="esp", choices=ALIGN_CONDITIONS,
+    parser.add_argument("--align-condition", default="esp", choices=ALIGN_CONDITIONS,
         help="Similarity used to rigidly align condition 1 onto condition 2",
     )
 
     # Sampling
-    parser.add_argument("--composition_mode", default="default",
+    parser.add_argument("--composition-mode", default="default",
         choices=COMPOSITION_MODES,
         help="'default' prepends an unconditional component weighted "
-             "1 - sum(--weights_conditions); 'conditional' uses only the two "
-             "supplied conditions",
+        "1 - sum(--weights-conditions); 'conditional' uses only the two "
+        "supplied conditions",
     )
-    parser.add_argument("--weights_conditions", type=float, nargs=2,
+    parser.add_argument("--weights-conditions", type=float, nargs=2,
         default=[0.5, 0.5], metavar=("W_1", "W_2"),
         help="Per-condition composition weights",
     )
-    parser.add_argument("--batch_size_per_sample", type=int, default=20,
+    parser.add_argument("--batch-size-per-sample", type=int, default=20,
         help="Molecules per atom count; each atom count is run as two batches "
-             "of half this size",
+        "of half this size",
     )
-    parser.add_argument("--atom_range", type=int, nargs=2, default=[-5, 5],
+    parser.add_argument("--atom-range", type=int, nargs=2, default=[-5, 5],
         metavar=("LO", "HI"),
         help="Atom counts swept around the reference size, upper bound exclusive",
     )
-    parser.add_argument("--condition_modalities", default="all",
+    parser.add_argument("--condition-modalities", default="all",
         choices=CONDITION_MODALITIES,
         help="Modalities to condition on; x2/x3/x4 are the ShEPhERD-1x names",
     )
-    parser.add_argument("--pharmacophore_conditioning", action="store_true",
+    parser.add_argument("--pharmacophore-conditioning", action="store_true",
         help="Inpaint only the reference pharmacophores rather than all of x4",
     )
-    parser.add_argument("--neutralize_esp", action="store_true",
+    parser.add_argument("--neutralize-esp", action="store_true",
         help="Smear net charge over atoms so the reference ESP sums to zero",
     )
-    parser.add_argument("--profile_xtb_optimize", action="store_true",
+    parser.add_argument("--profile-xtb-optimize", action="store_true",
         help="Relax the reference geometries with xTB before extracting "
-             "profiles. Off by default because the inputs are already posed "
-             "and carry precomputed charges.",
+        "profiles. Off by default because the inputs are already posed "
+        "and carry precomputed charges.",
     )
-    parser.add_argument("--num_surf_points", type=int, default=DEFAULT_NUM_SURF_POINTS,
-        help="Surface points sampled for the conditioning profiles",
-    )
-    parser.add_argument("--probe_radius", type=float, default=DEFAULT_PROBE_RADIUS,
+    parser.add_argument("--probe-radius", type=float, default=DEFAULT_PROBE_RADIUS,
         help="Probe radius for the conditioning surface",
     )
 
     # EDM sampler
-    parser.add_argument("--num_steps", type=int, default=400)
-    parser.add_argument("--shepherd_pred", action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Use stochastic shepherd prediction instead of an ODE step",
-    )
-    parser.add_argument("--use_stochastic", action="store_true",
-        help="Add churn noise to EDM sampling",
-    )
-    parser.add_argument("--early_stop_edm", type=float, default=0.9,
-        help="Truncate EDM sampling. -1 runs all --num_steps; a value in [0, 1] "
+    parser.add_argument("--num-steps", type=int, default=400)
+    parser.add_argument("--early-stop-edm", type=float, default=0.9,
+        help="Truncate EDM sampling. -1 runs all --num-steps; a value in [0, 1] "
              "is a fraction of num_steps; a value above 1 is an absolute step "
              "count. 0.9 reproduces the ShEPhERD-1x default.",
     )
-    parser.add_argument("--sigma_max", type=float, default=3.0)
-    parser.add_argument("--sigma_min", type=float, default=None,
+    parser.add_argument("--sigma-max", type=float, default=3.0)
+    parser.add_argument("--sigma-min", type=float, default=None,
         help="Override the EDM schedule sigma_min",
     )
     parser.add_argument("--rho", type=float, default=None,
         help="Override the EDM schedule rho",
     )
-    parser.add_argument("--alignment_start_frac", type=float, default=0.0,
+    parser.add_argument("--alignment-start-frac", type=float, default=0.0,
         help="Fraction of steps, counted from the end, over which ESP alignment "
-             "is applied",
+        "is applied",
     )
-    parser.add_argument("--alignment_interval", type=int, default=30,
+    parser.add_argument("--alignment-interval", type=int, default=30,
         help="Recompute the ESP alignment every N steps",
     )
-    parser.add_argument("--alignment_mode", default="so3", choices=("so3", "se3"),
+    parser.add_argument("--alignment-mode", default="so3", choices=("so3", "se3"),
         help="ESP alignment mode: so3 (rotation only) or se3 (full rigid)",
     )
-    parser.add_argument("--alignment_ema_alpha", type=float, default=0.3,
+    parser.add_argument("--alignment-ema-alpha", type=float, default=0.3,
         help="EMA smoothing factor for alignment (1.0 = no smoothing)",
     )
 
     # Evaluation and output
-    parser.add_argument("--skip_eval", action="store_true",
+    parser.add_argument("--skip-eval", action="store_true",
         help="Generate and checkpoint only, skipping the shepherd-score "
-             "evaluation and the combined summary",
+        "evaluation and the combined summary",
     )
-    parser.add_argument("--eval_workers", type=int, default=20,
+    parser.add_argument("--eval-workers", type=int, default=20,
         help="Parallel workers for evaluation",
     )
     parser.add_argument("--overwrite", action="store_true")
@@ -294,20 +292,25 @@ def parse_args() -> argparse.Namespace:
 
     args = parser.parse_args()
     if args.sample_id is not None and args.indices is not None:
-        parser.error("--sample_id and --indices are mutually exclusive")
+        parser.error("--sample-id and --indices are mutually exclusive")
     if args.atom_range[0] >= args.atom_range[1]:
-        parser.error("--atom_range LO must be less than HI")
+        parser.error("--atom-range LO must be less than HI")
     if args.batch_size_per_sample < 2:
-        parser.error("--batch_size_per_sample must be at least 2")
-    if min(args.weights_conditions) < 0:
-        parser.error("--weights_conditions must be non-negative")
-    if args.composition_mode == "default" and sum(args.weights_conditions) > 1:
-        parser.error(
-            "--weights_conditions must sum to at most 1 when --composition_mode "
-            "is 'default', since the remainder weights the unconditional component"
-        )
+        parser.error("--batch-size-per-sample must be at least 2")
+    if args.composition_mode == "default":
+        if min(args.weights_conditions) < 0:
+            parser.error(
+                "--weights-conditions must be non-negative when --composition-mode "
+                "is 'default'; negative weights are only supported with "
+                "--composition-mode conditional"
+            )
+        if sum(args.weights_conditions) > 1:
+            parser.error(
+                "--weights-conditions must sum to at most 1 when --composition-mode "
+                "is 'default', since the remainder weights the unconditional component"
+            )
     if args.eval_workers < 1:
-        parser.error("--eval_workers must be positive")
+        parser.error("--eval-workers must be positive")
     return args
 
 
@@ -315,14 +318,14 @@ def _check_profile_settings(args: argparse.Namespace, params: dict) -> None:
     """Warn when profile extraction disagrees with the checkpoint's own params."""
     x3_params = params.get("dataset", {}).get("x3", {})
     for name, value in (
-        ("num_surf_points", args.num_surf_points),
+        ("num_surf_points", DEFAULT_NUM_SURF_POINTS),
         ("probe_radius", args.probe_radius),
     ):
         expected = x3_params.get(name)
         if expected is not None and expected != value:
             print(
-                f"WARNING: --{name} is {value} but the checkpoint was trained "
-                f"with {expected}; conditioning may be out of distribution",
+                f"WARNING: --{name.replace('_', '-')} is {value} but the checkpoint "
+                f"was trained with {expected}; conditioning may be out of distribution",
                 file=sys.stderr,
             )
 
@@ -355,7 +358,7 @@ def _prepare_profiles(
             mol,
             partial_charges=charges,
             xtb_optimize=args.profile_xtb_optimize,
-            num_surf_points=args.num_surf_points,
+            num_surf_points=DEFAULT_NUM_SURF_POINTS,
             probe_radius=args.probe_radius,
             neutralize_esp=args.neutralize_esp,
         )
@@ -388,8 +391,6 @@ def _generate_sample(
             condition_modalities=args.condition_modalities,
             pharmacophore_conditioning=args.pharmacophore_conditioning,
             num_steps=args.num_steps,
-            shepherd_pred=args.shepherd_pred,
-            use_stochastic=args.use_stochastic,
             early_stop_edm=args.early_stop_edm,
             sigma_max=args.sigma_max,
             sigma_min=args.sigma_min,
@@ -409,20 +410,13 @@ def _generate_sample(
     return generated_samples
 
 
-def _run_config(args: argparse.Namespace) -> dict:
-    return {
-        key: str(value) if isinstance(value, Path) else value
-        for key, value in vars(args).items()
-    }
-
-
 def _check_existing_config(path: Path, config: dict) -> None:
     """Prevent incompatible runs from sharing an output directory."""
     if not path.exists():
         return
     previous = json.loads(path.read_text())
     immutable_keys = (
-        "path",
+        "test_path",
         "given_pairs_path",
         "n_samples",
         "seed",
@@ -438,9 +432,15 @@ def _check_existing_config(path: Path, config: dict) -> None:
     ]
     if differences:
         raise ValueError(
-            "--save_dir holds an incompatible run_config.json (different "
+            "--output-dir holds an incompatible run_config.json (different "
             f"{', '.join(differences)}); use a new directory"
         )
+
+
+def _write_failed_samples(path: Path, failed: dict) -> None:
+    path.write_text(
+        json.dumps({str(key): value for key, value in failed.items()}, indent=2) + "\n"
+    )
 
 
 def main() -> None:
@@ -449,9 +449,10 @@ def main() -> None:
     print(f"Composition mode: {args.composition_mode} | "
           f"weights {args.weights_conditions}")
     print("Loading condition molblocks and charges...")
-    molblocks_and_charges = read_pickle(args.path)
+    with args.test_path.open("rb") as handle:
+        molblocks_and_charges = pickle.load(handle)
     if not isinstance(molblocks_and_charges, (list, tuple)) or not molblocks_and_charges:
-        raise ValueError("--path must contain a non-empty sequence")
+        raise ValueError("--test-path must contain a non-empty sequence")
 
     is_paired = isinstance(molblocks_and_charges[0][0], tuple)
     given_pairs = None
@@ -460,13 +461,14 @@ def main() -> None:
         id_space = len(molblocks_and_charges)
         if args.given_pairs_path is not None:
             print(
-                "Ignoring --given_pairs_path because --path is already paired",
+                "Ignoring --given-pairs-path because --test-path is already paired",
                 file=sys.stderr,
             )
     else:
         id_space = args.n_samples
         if args.given_pairs_path is not None:
-            given_pairs = read_pickle(args.given_pairs_path)
+            with args.given_pairs_path.open("rb") as handle:
+                given_pairs = pickle.load(handle)
             print(f"Loaded {len(given_pairs)} given pairs")
 
     if args.sample_id is not None:
@@ -481,24 +483,26 @@ def main() -> None:
     if invalid:
         raise ValueError(f"sample ids out of range [0, {id_space}): {invalid}")
 
-    args.save_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_dir = args.save_dir / "checkpoints"
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_dir = args.output_dir / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    config_path = args.save_dir / "run_config.json"
-    config = _run_config(args)
+    config = {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in vars(args).items()
+    }
+    config_path = args.output_dir / "run_config.json"
     _check_existing_config(config_path, config)
-    write_json(config_path, config)
+    config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
 
     print("Loading model...")
     model = load_model(
-        local_checkpoint_path=str(args.model_path) if args.model_path else None,
+        local_checkpoint_path=str(args.checkpoint) if args.checkpoint else None,
         device=args.device,
     )
-    if args.ema_path is not None:
-        model.load_ema_weights_for_inference(ema_checkpoint_path=str(args.ema_path))
     _check_profile_settings(args, model.params)
 
     failed = {}
+    failed_path = args.output_dir / "failed_samples.json"
 
     def record_failure(key: str, error: Exception | str) -> None:
         failed[key] = (
@@ -506,7 +510,7 @@ def main() -> None:
             if isinstance(error, str)
             else f"{type(error).__name__}: {error}\n{traceback.format_exc()}"
         )
-        write_json(args.save_dir / "failed_samples.json", failed)
+        _write_failed_samples(failed_path, failed)
 
     evaluation_work = []
     progress = tqdm(
@@ -523,10 +527,12 @@ def main() -> None:
             )
 
             if profiles_path.exists() and not args.overwrite:
-                profile_1, profile_2 = read_pickle(profiles_path)
+                with profiles_path.open("rb") as handle:
+                    profile_1, profile_2 = pickle.load(handle)
             else:
                 profile_1, profile_2 = _prepare_profiles(args, mol_data, i, j)
-                write_pickle(profiles_path, (profile_1, profile_2))
+                with profiles_path.open("wb") as handle:
+                    pickle.dump((profile_1, profile_2), handle)
 
             n_atoms_list = resolve_atom_counts(
                 profile_1.n_atoms,
@@ -543,12 +549,14 @@ def main() -> None:
             )
 
             if samples_path.exists() and not args.overwrite:
-                generated_samples = read_pickle(samples_path)
+                with samples_path.open("rb") as handle:
+                    generated_samples = pickle.load(handle)
             else:
                 generated_samples = _generate_sample(
                     args, model, (profile_1, profile_2), n_atoms_list, n_x4
                 )
-                write_pickle(samples_path, generated_samples)
+                with samples_path.open("wb") as handle:
+                    pickle.dump(generated_samples, handle)
 
             if args.skip_eval:
                 continue
@@ -557,8 +565,8 @@ def main() -> None:
             # against each condition separately
             for condition_index, profile in enumerate((profile_1, profile_2)):
                 key = f"{sample_id:04d}_cond{condition_index}"
-                rowwise_path = args.save_dir / f"sample_{key}_rowwise.pkl"
-                global_path = args.save_dir / f"sample_{key}_global.pkl"
+                rowwise_path = args.output_dir / f"sample_{key}_rowwise.pkl"
+                global_path = args.output_dir / f"sample_{key}_global.pkl"
                 if (
                     rowwise_path.exists()
                     and global_path.exists()
@@ -627,21 +635,23 @@ def main() -> None:
     for sample_id in selected:
         for condition_index in (0, 1):
             key = f"{sample_id:04d}_cond{condition_index}"
-            rowwise_path = args.save_dir / f"sample_{key}_rowwise.pkl"
+            rowwise_path = args.output_dir / f"sample_{key}_rowwise.pkl"
             if rowwise_path.exists():
-                frames.append(read_pickle(rowwise_path))
+                with rowwise_path.open("rb") as handle:
+                    frames.append(pickle.load(handle))
                 spent_paths.append(rowwise_path)
-            global_path = args.save_dir / f"sample_{key}_global.pkl"
+            global_path = args.output_dir / f"sample_{key}_global.pkl"
             if global_path.exists():
                 spent_paths.append(global_path)
 
     combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    combined_path = args.save_dir / "combined_results.pkl"
-    write_pickle(combined_path, combined)
+    combined_path = args.output_dir / "combined_results.pkl"
+    with combined_path.open("wb") as handle:
+        pickle.dump(combined, handle)
 
     stats = calculate_summary_statistics(combined)
-    stats_path = args.save_dir / "combined_results_stats.json"
-    write_json(stats_path, stats)
+    stats_path = args.output_dir / "combined_results_stats.json"
+    stats_path.write_text(json.dumps(stats, indent=2) + "\n")
 
     for path in spent_paths:
         path.unlink()
@@ -649,13 +659,19 @@ def main() -> None:
     if failed:
         print(f"Completed with {len(failed)} failures; see failed_samples.json")
     else:
-        failed_path = args.save_dir / "failed_samples.json"
         if failed_path.exists():
             failed_path.unlink()
     print(f"Saved combined results to {combined_path}")
     print(f"Saved summary statistics to {stats_path}")
-    print(f"  Total samples: {stats['total_samples']}")
-    print(f"  Validity rate (post-opt): {stats['validity_rate']:.3%}")
+    print(f"  Total eval rows: {stats['total_eval_rows']}")
+    for condition_index in (0, 1):
+        block = stats[f"condition_{condition_index}"]
+        print(
+            f"  vs condition {condition_index}: "
+            f"{block['total_samples']} rows, "
+            f"validity {block['validity_rate']:.3%}, "
+            f"ESP median {block['esp_similarity']}"
+        )
     print("Done!")
 
 

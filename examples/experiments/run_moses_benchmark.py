@@ -83,6 +83,10 @@ def read_flat_index_lists(path: Path, name: str) -> dict[int, list[int]]:
         raise ValueError(f"{name} values must be lists of integers") from error
 
 
+def _json_median(values) -> float:
+    return float(np.nanmedian(values))
+
+
 def calculate_summary_statistics(combined_df: pd.DataFrame) -> dict:
     """Summary statistics."""
     total_samples = int(len(combined_df))
@@ -92,18 +96,18 @@ def calculate_summary_statistics(combined_df: pd.DataFrame) -> dict:
     validity_post_rate = float(valid_post / total_samples) if total_samples > 0 else 0.0
 
     non_nan_df = combined_df.dropna(subset=["molblocks_post_opt"])
-    filtered_df = non_nan_df[(non_nan_df['graph_similarities_post_opt'] <= 0.3)]
+    filtered_df = non_nan_df[(non_nan_df["graph_similarities_post_opt"] <= 0.3)]
 
     stats = {
         "total_samples": total_samples,
         "validity_rate": validity_post_rate,
-        "graph_similarity": np.nanmedian(combined_df['graph_similarities_post_opt']),
-        "surface_similarity": np.nanmedian(filtered_df['sims_surf_target_relax_optimal']),
-        "esp_similarity": np.nanmedian(filtered_df['sims_esp_target_relax_optimal']),
-        "pharm_similarity": np.nanmedian(filtered_df['sims_pharm_target_relax_optimal']),
-        "strain_energy": np.nanmedian(combined_df['strain_energies']),
-        "SA_score": np.nanmedian(combined_df['SA_scores_post_opt']),
-        "QED": np.nanmedian(combined_df['QEDs_post_opt']),
+        "graph_similarity": _json_median(combined_df["graph_similarities_post_opt"]),
+        "surface_similarity": _json_median(filtered_df["sims_surf_target_relax_optimal"]),
+        "esp_similarity": _json_median(filtered_df["sims_esp_target_relax_optimal"]),
+        "pharm_similarity": _json_median(filtered_df["sims_pharm_target_relax_optimal"]),
+        "strain_energy": _json_median(combined_df["strain_energies"]),
+        "SA_score": _json_median(combined_df["SA_scores_post_opt"]),
+        "QED": _json_median(combined_df["QEDs_post_opt"]),
     }
     return stats
 
@@ -434,7 +438,6 @@ def main() -> None:
 
     print(f"Saved combined results to {combined_path}")
     print(f"Saved summary statistics to {stats_path}")
-    print(f"  References evaluated: {stats.get('num_test_molecules', 0)}")
     print(f"  Total samples: {stats['total_samples']}")
     print(f"  Validity rate (post-opt): {stats['validity_rate']:.3%}")
     print("Done!")

@@ -26,13 +26,13 @@ try:
 except ImportError:
     DockingEvalPipeline = None
 
-# Fragment file formats loaded from --frag_dir
+# Fragment file formats loaded from --frag-dir
 SUPPORTED_EXTENSIONS = {".mol", ".sdf", ".mol2", ".pdb", ".pdbqt"}
 VALIDITY_MODES = ("drug_likeness", "composite")
 MUTATION_MODES = ("conditional", "composed", "ph4_conditioned")
 CONDITION_MODES = ("x2", "x3", "x4", "all", "x2_x4")
 FRAGMENT_SELECTION_MODES = ("lineage", "use_count")
-# Vina search box used when --box_size is not given
+# Vina search box used when --box-size is not given
 DEFAULT_BOX_SIZE = (20.0, 20.0, 20.0)
 GAS_PHASE_ALIASES = ("none", "null", "gas")
 
@@ -170,136 +170,133 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
 
     # Model
-    parser.add_argument("--checkpoint", required=True,
-        help="ShEPhERD model checkpoint (.ckpt)",
-    )
-    parser.add_argument("--ema_checkpoint", default=None,
-        help="Optional EMA checkpoint (.ckpt)",
+    parser.add_argument("--checkpoint", type=Path, default=None,
+        help="ShEPhERD model checkpoint (.ckpt); default downloads from Hugging Face",
     )
     parser.add_argument("--device", default=None, help="Device: cuda / cpu / auto")
 
     # Fragment input
-    parser.add_argument("--frag_dir", default=None,
+    parser.add_argument("--frag-dir", default=None,
         help="Directory of posed fragment files (mol / sdf / mol2 / pdb / pdbqt); "
              "not needed when resuming",
     )
-    parser.add_argument("--file_types", nargs="+", default=None, metavar="EXT",
-        help="File extensions to load from --frag_dir (default: all supported "
-             "types). Example: --file_types .mol .sdf",
+    parser.add_argument("--file-types", nargs="+", default=None, metavar="EXT",
+        help="File extensions to load from --frag-dir (default: all supported "
+             "types). Example: --file-types .mol .sdf",
     )
-    parser.add_argument("--max_initial_mols", type=int, default=None,
+    parser.add_argument("--max-initial-mols", type=int, default=None,
         help="Cap on the number of seed fragments to load",
     )
-    parser.add_argument("--seed_xtb_optimize", action="store_true", default=False,
+    parser.add_argument("--seed-xtb-optimize", action="store_true", default=False,
         help="Relax the seed fragment geometries and charges with xTB before "
              "extracting their interaction profiles. Off by default",
     )
 
     # Docking target
-    parser.add_argument("--pdb_id", default="1iep",
+    parser.add_argument("--pdb-id", default="1iep",
         help="PDB ID of a built-in shepherd_score docking target",
     )
-    parser.add_argument("--receptor_pdbqt", default=None,
-        help="Custom receptor .pdbqt, overriding --pdb_id",
+    parser.add_argument("--receptor-pdbqt", default=None,
+        help="Custom receptor .pdbqt, overriding --pdb-id",
     )
     parser.add_argument("--center", type=float, nargs=3, default=None,
         metavar=("X", "Y", "Z"),
-        help="Pocket center; required with --receptor_pdbqt",
+        help="Pocket center; required with --receptor-pdbqt",
     )
-    parser.add_argument("--box_size", type=float, nargs=3, default=None,
+    parser.add_argument("--box-size", type=float, nargs=3, default=None,
         metavar=("X", "Y", "Z"),
         help=f"Search box size (default {' '.join(str(edge) for edge in DEFAULT_BOX_SIZE)})",
     )
     parser.add_argument("--exhaustiveness", type=int, default=32)
-    parser.add_argument("--docking_cpus", type=int, default=32)
+    parser.add_argument("--docking-cpus", type=int, default=32)
 
     # Validity checker
     parser.add_argument("--validity", default="drug_likeness", choices=VALIDITY_MODES,
         help="drug_likeness = Lipinski Ro5 filter (default); "
              "composite = Ro5 plus PAINS/Brenk substructure filtering",
     )
-    parser.add_argument("--mw_limit", type=float, default=500.0,
+    parser.add_argument("--mw-limit", type=float, default=500.0,
         help="DrugLikenessChecker: max molecular weight (Da)",
     )
-    parser.add_argument("--logp_limit", type=float, default=5.0,
+    parser.add_argument("--logp-limit", type=float, default=5.0,
         help="DrugLikenessChecker: max Wildman-Crippen LogP",
     )
-    parser.add_argument("--hbd_limit", type=int, default=5,
+    parser.add_argument("--hbd-limit", type=int, default=5,
         help="DrugLikenessChecker: max H-bond donors",
     )
-    parser.add_argument("--hba_limit", type=int, default=10,
+    parser.add_argument("--hba-limit", type=int, default=10,
         help="DrugLikenessChecker: max H-bond acceptors",
     )
-    parser.add_argument("--max_violations", type=int, default=1,
+    parser.add_argument("--max-violations", type=int, default=1,
         help="DrugLikenessChecker: max Ro5 rule violations (0 = strict)",
     )
-    parser.add_argument("--tpsa_limit", type=float, default=None,
+    parser.add_argument("--tpsa-limit", type=float, default=None,
         help="DrugLikenessChecker: optional TPSA upper bound (square angstroms)",
     )
-    parser.add_argument("--rotatable_bonds_limit", type=int, default=None,
+    parser.add_argument("--rotatable-bonds-limit", type=int, default=None,
         help="DrugLikenessChecker: optional max rotatable bonds",
     )
-    parser.add_argument("--sa_score_limit", type=float, default=4.5,
+    parser.add_argument("--sa-score-limit", type=float, default=4.5,
         help="DrugLikenessChecker: max SA score (1-10)",
     )
-    parser.add_argument("--qed_min", type=float, default=0.2,
+    parser.add_argument("--qed-min", type=float, default=0.2,
         help="DrugLikenessChecker: min QED (0-1)",
     )
-    parser.add_argument("--validity_verbose", action="store_true", default=False,
+    parser.add_argument("--validity-verbose", action="store_true", default=False,
         help="Print per-molecule Ro5 and filter details as they are checked",
     )
 
     # GA hyperparameters
-    parser.add_argument("--population_size", type=int, default=50)
-    parser.add_argument("--max_iterations_fraction", type=float, default=4.0,
+    parser.add_argument("--population-size", type=int, default=50)
+    parser.add_argument("--max-iterations-fraction", type=float, default=4.0,
         help="Max iterations as a fraction of the total search space size",
     )
-    parser.add_argument("--num_generations", type=int, default=50)
-    parser.add_argument("--mutation_mode", default="conditional", choices=MUTATION_MODES)
-    parser.add_argument("--crossover_w", type=float, nargs=2, default=[0.3, 0.3],
+    parser.add_argument("--num-generations", type=int, default=50)
+    parser.add_argument("--mutation-mode", default="conditional", choices=MUTATION_MODES)
+    parser.add_argument("--crossover-w", type=float, nargs=2, default=[0.3, 0.3],
         metavar=("W_A", "W_B"),
     )
-    parser.add_argument("--crossover_prob", type=float, default=0.1)
+    parser.add_argument("--crossover-prob", type=float, default=0.1)
     parser.add_argument("--selection", default="tournament", choices=("tournament",),
         help="Base selection method, automatically promoted to pareto_tournament "
              "in multi-objective mode",
     )
-    parser.add_argument("--tournament_size", type=int, default=16)
-    parser.add_argument("--top_k", type=int, default=None,
+    parser.add_argument("--tournament-size", type=int, default=16)
+    parser.add_argument("--top-k", type=int, default=None,
         help="Restrict the parent pool to the top k individuals before tournament "
              "selection. None (default) uses the whole population.",
     )
-    parser.add_argument("--elite_fraction", type=float, default=0.1)
-    parser.add_argument("--N_x1_range", type=int, nargs=2, default=[0, 2],
+    parser.add_argument("--elite-fraction", type=float, default=0.1)
+    parser.add_argument("--N-x1-range", type=int, nargs=2, default=[0, 2],
         metavar=("LO", "HI"),
     )
-    parser.add_argument("--N_x4_range", type=int, nargs=2, default=[0, 2],
+    parser.add_argument("--N-x4-range", type=int, nargs=2, default=[0, 2],
         metavar=("LO", "HI"),
     )
-    parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--mutate_batch_size", type=int, default=1)
-    parser.add_argument("--num_steps", type=int, default=400)
-    parser.add_argument("--condition_mode", default="all", choices=CONDITION_MODES)
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--mutate-batch-size", type=int, default=1)
+    parser.add_argument("--num-steps", type=int, default=400)
+    parser.add_argument("--condition-mode", default="all", choices=CONDITION_MODES)
     parser.add_argument("--seed", type=int, default=42)
 
     # Fragment merging
-    parser.add_argument("--no_fragment_merge_mode", action="store_true",
+    parser.add_argument("--no-fragment-merge-mode", action="store_true",
         help="Disable fragment-merge crossover, using the standard MAX reference "
              "instead of SUM. Off by default, so fragment merging is enabled.",
     )
-    parser.add_argument("--fragment_atom_threshold", type=int, default=20,
+    parser.add_argument("--fragment-atom-threshold", type=int, default=20,
         help="Max heavy-atom count for a parent to qualify as a fragment in "
              "fragment_merge_mode (default: 20)",
     )
-    parser.add_argument("--fragment_inclusion_prob", type=float, default=0.5,
+    parser.add_argument("--fragment-inclusion-prob", type=float, default=0.5,
         help="Probability of including a fragment parent in crossover when "
              "fragment_merge_mode is enabled (default: 0.5)",
     )
-    parser.add_argument("--fragment_merge_alpha", type=float, default=0.5,
+    parser.add_argument("--fragment-merge-alpha", type=float, default=0.5,
         help="Fraction of the smaller parent's atoms added to the larger parent's "
              "atom count in a mixed merge (default: 0.5)",
     )
-    parser.add_argument("--fragment_selection_mode", default="lineage",
+    parser.add_argument("--fragment-selection-mode", default="lineage",
         choices=FRAGMENT_SELECTION_MODES,
         help="How parent_b is picked. 'lineage' avoids fragments already in "
              "either parent's ancestry; 'use_count' round-robins by least-used "
@@ -307,68 +304,59 @@ def parse_args() -> argparse.Namespace:
     )
 
     # Molecule conversion
-    parser.add_argument("--xtb_optimize", action="store_true", default=True,
+    parser.add_argument("--xtb-optimize", action="store_true", default=True,
         help="Relax GA offspring geometries and charges with xTB before scoring "
              "(default: on)",
     )
-    parser.add_argument("--no_xtb_optimize", dest="xtb_optimize", action="store_false",
+    parser.add_argument("--no-xtb-optimize", dest="xtb_optimize", action="store_false",
         help="Skip xTB relaxation of GA offspring (faster, lower-fidelity charges)",
     )
-    parser.add_argument("--profile_conversion", default="fixed",
+    parser.add_argument("--profile-conversion", default="fixed",
         choices=("fixed", "inferred"),
         help="How the molecular charge is obtained when converting a generated "
              "sample. 'fixed' pins it to 0 (default); 'inferred' recovers it "
              "from the geometry by trying 0, +/-1, +/-2.",
     )
-    parser.add_argument("--profile_solvent", default="water",
+    parser.add_argument("--profile-solvent", default="water",
         help="Implicit solvent for the xTB calls behind profile extraction "
              "(default: water). Pass 'none' to run them in the gas phase for "
              "ESP charges.",
     )
 
     # EDM sampler
-    parser.add_argument("--use_stochastic", action="store_true", default=False,
-        help="Enable churn noise in EDM sampling",
-    )
-    parser.add_argument("--no_stochastic", dest="use_stochastic", action="store_false",
-        help="Disable EDM churn noise (pure ODE)",
-    )
-    parser.add_argument("--shepherd_pred", action="store_true",
-        help="Use stochastic shepherd prediction instead of an ODE step in EDM",
-    )
-    parser.add_argument("--early_stop_edm", type=float, default=-1,
-        help="Truncate EDM sampling. -1 runs all --num_steps (default); a value "
+    parser.add_argument("--early-stop-edm", type=float, default=-1,
+        help="Truncate EDM sampling. -1 runs all --num-steps (default); a value "
              "in [0, 1] is a fraction of num_steps; a value above 1 is an "
              "absolute step count.",
     )
-    parser.add_argument("--sigma_max", type=float, default=3.0,
+    parser.add_argument("--sigma-max", type=float, default=3.0,
         help="Override the EDM schedule sigma_max",
     )
-    parser.add_argument("--sigma_min", type=float, default=None,
+    parser.add_argument("--sigma-min", type=float, default=None,
         help="Override the EDM schedule sigma_min",
     )
     parser.add_argument("--rho", type=float, default=None,
         help="Override the EDM schedule rho",
     )
-    parser.add_argument("--alignment_start_frac", type=float, default=0.0,
+    parser.add_argument("--alignment-start-frac", type=float, default=0.0,
         help="Fraction of steps, counted from the end, over which ESP alignment "
              "is applied during EDM sampling",
     )
-    parser.add_argument("--alignment_interval", type=int, default=10,
+    parser.add_argument("--alignment-interval", type=int, default=10,
         help="Recompute the ESP alignment every N EDM steps",
     )
-    parser.add_argument("--alignment_mode", default="so3", choices=("so3", "se3"),
+    parser.add_argument("--alignment-mode", default="so3", choices=("so3", "se3"),
         help="EDM ESP alignment mode: so3 (rotation only) or se3 (full rigid)",
     )
-    parser.add_argument("--alignment_ema_alpha", type=float, default=1.0,
+    parser.add_argument("--alignment-ema-alpha", type=float, default=1.0,
         help="EMA smoothing factor for EDM alignment (1.0 = no smoothing)",
     )
 
     # Checkpointing and resume
-    parser.add_argument("--checkpoint_dir", default=None,
+    parser.add_argument("--checkpoint-dir", default=None,
         help="Directory for per-generation GA checkpoints",
     )
-    parser.add_argument("--checkpoint_every", type=int, default=1)
+    parser.add_argument("--checkpoint-every", type=int, default=1)
     parser.add_argument("--resume", default=None,
         help="GA checkpoint .pkl file to resume from",
     )
@@ -378,9 +366,9 @@ def parse_args() -> argparse.Namespace:
 
     args = parser.parse_args()
     if args.resume is None and args.frag_dir is None:
-        parser.error("--frag_dir is required when not resuming")
+        parser.error("--frag-dir is required when not resuming")
     if args.receptor_pdbqt is not None and args.center is None:
-        parser.error("--center is required with --receptor_pdbqt")
+        parser.error("--center is required with --receptor-pdbqt")
     return args
 
 
@@ -479,8 +467,6 @@ def _ga_config(args: argparse.Namespace, fragment_merge_mode: bool) -> GAConfig:
         checkpoint_every=args.checkpoint_every,
         seed=args.seed,
         verbose=True,
-        use_stochastic=args.use_stochastic,
-        shepherd_pred=args.shepherd_pred,
         xtb_optimize=args.xtb_optimize,
         profile_conversion=args.profile_conversion,
         profile_solvent=(
@@ -535,12 +521,9 @@ def main() -> None:
 
     print("Loading ShEPhERD-2 model...")
     model = load_model(
-        local_checkpoint_path=args.checkpoint,
+        local_checkpoint_path=str(args.checkpoint) if args.checkpoint else None,
         device=args.device,
     )
-    if args.ema_checkpoint is not None:
-        model.load_ema_weights_for_inference(ema_checkpoint_path=args.ema_checkpoint)
-
     # A resumed run restores its population from the checkpoint instead
     mols: list[Chem.Mol] | None = None
     if args.resume is None:

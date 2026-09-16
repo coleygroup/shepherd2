@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Generate molecules for the 200-sample MolGenBench conditional benchmark.
 
-    python examples/experiments/molgenbench/run_molgenbench_generation_via_generate.py \
+    python examples/experiments/molgenbench/run_molgenbench_generate_wrapper.py \
         --mode pharm-priority-scaffold --output-dir out/molgenbench_pp_scaffold
 """
 

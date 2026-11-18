@@ -236,6 +236,7 @@ class Conditioning:
     scaffold: bool = False
     pharm: bool = False
     prioritization: list[int] | None = None
+    eval_prioritization: list[int] | None = None
     n_x1: tuple[int, int] | list[int] = (0, 0)
     n_x4: tuple[int, int] | list[int] = (0, 0)
     ref_index: int = -1

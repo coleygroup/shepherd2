@@ -127,7 +127,11 @@ class ShepherdModel:
             coordinates as supplied; ``'auto'`` centers scaffold/pharmacophore
             conditioning and restores the offset on output; a length-3 array subtracts
             that explicit offset from all condition positions.
-            We suggest using 'origin' for most cases.
+            Standard conditional generation (without scaffold/pharmacophore conditioning)
+            subtracts atom COM at every denoising step so outputs are zero-centered;
+            extract ``condition`` with ``center=True`` (default) and add
+            ``condition.com_before_centering`` back after generation to recover the
+            original frame. We suggest using 'origin' for most cases.
         inpaint : InpaintAdvancedOptions (default = None)
             Optional overrides for
             - which modalities to inpaint (including atom pos, bonds, etc.)

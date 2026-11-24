@@ -140,7 +140,11 @@ def generate(
         coordinates as supplied. ``'auto'`` centers scaffold/pharmacophore conditioning
         on the corresponding condition coordinates and restores that offset on output.
         A length-3 array subtracts that explicit offset from all condition positions.
-        Ignored if ``condition`` is None.
+        Standard conditional generation (without scaffold/pharmacophore conditioning)
+        subtracts atom COM at every denoising step so outputs are zero-centered;
+        extract ``condition`` with ``center=True`` (default) and add
+        ``condition.com_before_centering`` back after generation to recover the
+        original frame. Ignored if ``condition`` is None.
         We suggest using 'origin' for most cases.
     inpaint : InpaintAdvancedOptions (default = None)
         Optional overrides for

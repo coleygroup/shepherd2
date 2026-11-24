@@ -91,6 +91,8 @@ valid_mols = [mol for mol, charges in results if mol is not None]
 profile = samples[0].to_interaction_profile()
 ```
 
+> **Coordinate frame:** `extract_interaction_profile` centers the reference at the origin by default (`center=True`). Keep `center=True` for generation — ShEPhERD-2 generates in a zero-centered frame (COM is subtracted during standard conditional denoising), so uncentered profiles far from the origin degrade sample quality. To return generated molecules to `ref_mol`'s original frame (e.g. a crystal or docked pose), add `ref_profile.com_before_centering` back to the coordinates (the CLI `generate.py` does this automatically for 3D inputs).
+
 ## Training and inference data
 `data/conformers/` contains the relevant 3D structures, scaffold indices, and pharmacophore prioritization masks used for model evaluation and case studies. Generally, 3D molecular structures are stored as pickle files containing a list of tuples of (molblock, partial charges).
 

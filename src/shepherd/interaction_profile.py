@@ -769,8 +769,12 @@ def extract_interaction_profile(
     partial_charges : np.ndarray, optional
         Pre-computed partial charges (e.g. from xTB).  If ``None``,
         a single point xTB calculation is performed.
-    center : bool
-        Whether to translate the molecule so its center of mass is at the origin.
+    center : bool (default = True)
+        Whether to translate the molecule so its center of mass is at the origin
+        (stored in ``com_before_centering``). Keep ``True`` for generation: standard
+        conditional generation always samples in a zero-centered frame, so uncentered
+        profiles far from the origin degrade sample quality. Add
+        ``profile.com_before_centering`` back after generation to recover the original frame.
     solvent : str
         The solvent to use for the xTB partial charges. Default is 'water'.
     condition_atom_inds : list[int], optional

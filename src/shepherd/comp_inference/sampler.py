@@ -381,11 +381,6 @@ def gen_x1_edm_inpainting_dict(
             "scaffold_conditioning=True requires a model trained with scaffold_conditioning=True."
         )
 
-    if not scaffold_conditioning:
-        params['scaffold_conditioning'] = False
-        params['dataset']['x1'].pop('fixed_substructure', None)
-        params['dataset']['x4'].pop('fixed_substructure', None)
-
     # bond types
     BOND_TYPES = params['dataset']['x1']['bond_types']
     BOND_TYPES_DICT = {b: BOND_TYPES.index(b) for b in BOND_TYPES}

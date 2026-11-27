@@ -1123,6 +1123,9 @@ def generate_edm_conditional(
     num_steps: int,
     edm_inpainting_dict: dict,
     early_stop_edm: int | float = -1,
+    sigma_max: float | None = None,
+    sigma_min: float | None = None,
+    rho: float | None = None,
     shepherd_pred: bool = True,
     verbose: bool = True,
     store_trajectories: bool = False,
@@ -1147,8 +1150,13 @@ def generate_edm_conditional(
     params = model_pl.params
     N_x2 = params['dataset']['x2']['num_points']
     N_x3 = params['dataset']['x3']['num_points']
-    # These are modified in `generate`
-    edm_params = params.get('edm', {})
+    edm_params = dict(params.get('edm', {}))
+    if sigma_max is not None:
+        edm_params['sigma_max'] = sigma_max
+    if sigma_min is not None:
+        edm_params['sigma_min'] = sigma_min
+    if rho is not None:
+        edm_params['rho'] = rho
     sigma_max = edm_params.get('sigma_max', 3.0)
     sigma_min = edm_params.get('sigma_min', 1e-3)
     sigma_steps = get_edm_sigma_schedule(num_steps, edm_params)
